@@ -1,0 +1,157 @@
+<html>
+	<head>
+		<meta http-equiv="content-type" content="text/html;charset=utf-8"/>
+		<style type="text/css">
+			#search-box{width: 50%; float: left; padding: 20px; box-sizing: border-box;}
+			#search-box input{width: 300px}
+			#favorits{width: 50%; float: right; padding: 20px; box-sizing: border-box;}
+		</style>
+		<script type="text/javascript" src="lib/vendors/modernizer.js"></script>
+		<script type="text/javascript" src="lib/vendors/jquery.js"></script>
+		<script type="text/javascript" src="lib/vendors/underscore.js"></script>
+		<script type="text/javascript" src="lib/vendors/backbone.js"></script>
+		<script type="text/javascript" src="lib/vendors/swig.js"></script>
+
+		<script type="text/javascript">
+
+			window.SearchView = Backbone.View.extend({
+				className : '',
+				events :{
+					"click button" : "search",
+					"keypress input" : "keyhandler"
+				},
+				initialize : function(config){
+					this.$el = config.$el; // es el elemento DOM de la vista
+					this.collection = config.collection; //colecion asociada a la vista
+
+					var self = this;
+
+					this.collection.on('add',function(model){
+						var videoView = new window.VideoView(model);
+
+						//debugger;
+						videoView.render();
+						//var videoHtml = window.templates.videoTemplate(model.toJSON());
+						self.$el.find("#videos").append(videoView.$el);
+					});
+					
+				},
+				search : function(e){
+					var value = this.$el.find('input').val();
+						self = this;
+
+					this.$el.find('input').val('');
+					//capaDeDatos.buscar(value);
+					this.collection.search(value);
+				},
+				keyhandler : function(e){
+					if(e.keyCode === 13){
+						this.search();
+					}
+				},
+				render : function(){}
+			});
+
+			window.VideoView = Backbone.View.extend({
+				initialize : function(model){
+					var self = this;
+					this.model = model;
+
+					this.model.on('change',function(){
+						self.render();
+					})
+
+					this.model.on('destroy',function(){
+						self.remove();
+					})
+				},
+				render : function(){
+					var videoHtml = window.templates.videoTemplate( this.model.toJSON());
+					this.$el.html(videoHtml);
+				}
+			})
+			window.SearchCollection = Backbone.Collection.extend({
+				empty : function(){
+					for (var i = this.models.length - 1; i >= 0; i--) {
+						this.models[i].destroy();
+					};
+				},
+				search : function(value){
+					//console.log(value);
+					var self = this;
+					self.empty();
+
+					var youtube = $.getJSON("http://gdata.youtube.com/feeds/videos?vq="+value+"&max-results=10&alt=json-in-script&callback=?");
+
+					youtube.done(function (data){
+						var videos = data.feed.entry.map(function(item){
+							return{
+								title : item.title.$t,
+								thumb : item.media$group.media$thumbnail[0].url
+							}
+						});
+
+						videos.forEach(function(videoData){
+							self.add(videoData);
+						})
+					});
+
+				}
+			});
+
+			window.RedditCollection = window.SearchCollection.extend({
+				search : function(value){
+					var self = this;
+					self.empty();
+
+					var reddit = $.getJSON('http://www.reddit.com/search.json?q='+value+'&jsonp=?');
+
+					reddit.done(function(response){
+
+						var redds = response.data.children.map(function(item){
+							return {
+								title : item.data.title,
+								thumb : item.data.thumbnail 
+							}
+						})
+
+						redds.forEach(function(reddsData){
+							self.add(reddsData);
+						})
+					})
+				}
+			})
+
+			//lo que se llama main.js
+
+			$(document).ready(function(){
+
+				window.searchCollection = new  window.SearchCollection();
+				window.searchBox = new window.SearchView({
+					$el: $('#search-box'),
+					collection : searchCollection
+				})
+
+				window.templates = {};
+				templates.videoTemplate = _.template( $('#video_tpl').html());
+			});
+		</script>
+		
+	</head>
+	<body>
+		<div id="search-box">
+			<p>Buscar: <input type="text"/><button>Buscar</button></p>
+			<div id="videos"></div>
+		</div>
+		<div id="favorits"></div>
+
+		<script type="text/template" id="video_tpl">
+			<div>
+				<h4> <%= title %> </h4>
+				<img src="<%= thumb %>"/>
+				<span class="favorite">Favorito</span>
+			</div>
+		</script>
+
+	</body>
+</html>
